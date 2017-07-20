@@ -1,0 +1,93 @@
+---
+
+- name: main | Create group
+  group:
+    name: "{{ wordpress_group }}"
+    system: yes
+    state: present
+  tags:
+    - wordpress
+
+- name: main | Create user
+  user:
+    name: "{{ wordpress_user }}"
+    group: "{{ wordpress_group }}"
+    home: "{{ wordpress_home }}"
+    shell: /bin/sh
+    comment: "Wordpress"
+    system: yes
+    state: present
+  tags:
+    - wordpress
+
+- name: main | Add user www-data to {{ wordpress_group }} group
+  user:
+    name: www-data
+    groups: "{{ wordpress_group }}"
+    append: True
+  tags:
+    - wordpress
+
+- name: main | Ensure that installation directory exists
+  file:
+    path: "{{ wordpress_install_dir }}"
+    state: directory
+  tags:
+    - wordpress
+
+- name: Wordpess | Download checksum file`
+  get_url:
+    url: "https://wordpress.org/wordpress-{{ wordpress_version }}.tar.gz.sha1"
+    dest: "/tmp/wordpress-{{ wordpress_version }}.tar.gz.sha1"
+  tags:
+    - wordpress
+
+- name: main | Slurp checksum
+  slurp:
+    src: "/tmp/wordpress-{{ wordpress_version }}.tar.gz.sha1"
+  register: wordpress_checksum
+  tags:
+    - wordpress
+
+- name: "main | Download {{wordpress_version}} to /tmp"
+  get_url:
+    url: "http://wordpress.org/wordpress-{{ wordpress_version }}.tar.gz"
+    force: no
+    dest: "/tmp/wordpress-{{ wordpress_version }}.tar.gz"
+    checksum: "sha1:{{ wordpress_checksum['content'] | b64decode }}"
+  tags:
+    - wordpress
+
+- name: main | Extract archive
+  unarchive:
+    src: "/tmp/wordpress-{{ wordpress_version }}.tar.gz"
+    dest: "{{ wordpress_install_dir }}"
+    owner: "{{ wordpress_user }}"
+    group: "{{ wordpress_group }}"
+    mode: 'u+rwX,g-w,o-rwx'
+    creates: "{{ wordpress_install_dir }}/wordpress"
+    remote_src: True
+  tags:
+    - wordpress
+
+- name: Wordpess | Fetch random salts for wp-config.php
+  get_url:
+    url: "https://api.wordpress.org/secret-key/1.1/salt/"
+    dest: "{{ wordpress_install_dir }}/wordpress-{{ wordpress_version }}.salt"
+    force: no
+  tags:
+    - wordpress
+
+- name: main | Slurp salt
+  slurp:
+    src: "{{ wordpress_install_dir }}/wordpress-{{ wordpress_version }}.salt"
+  register: wordpress_salt
+  tags:
+    - wordpress
+
+- name: main | Copy wp-config.php file
+  template:
+    src: wp-config.php.j2
+    dest: "{{ wordpress_install_dir }}/wordpress/wp-config.php"
+  tags:
+    - wordpress
